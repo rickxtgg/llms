@@ -122,8 +122,11 @@ class Trainer:
         
         while self.global_step < self.config.max_steps:
             self.epoch += 1
-            logger.info(f"开始 Epoch {self.epoch}")
-            epoch_iterator = tqdm(train_dataloader, desc=f"Epoch {self.epoch}")
+            if self.epoch % 5000 == 0:
+                logger.info(f"开始 Epoch {self.epoch}")
+                epoch_iterator = tqdm(train_dataloader, desc=f"Epoch {self.epoch}")
+            else:
+                epoch_iterator = train_dataloader
             
             for step, batch in enumerate(epoch_iterator):
                 # 将数据移动到设备
