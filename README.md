@@ -127,6 +127,10 @@ config = get_large_config()
 ```bash
 python scripts/train.py --config configs.model_config --config_name get_small_config()
 ```
+或者
+```bash
+python scripts/train.py --config configs.model_config --config_name default_config
+```
 
 #### 3. 分布式训练
 

@@ -58,10 +58,6 @@ class Trainer:
         self.epoch = 0
         self.best_val_loss = float('inf')
         
-        # 数据加载器状态监控
-        self.data_loading_errors = 0
-        self.max_data_loading_errors = 5  # 最大允许的连续数据加载错误次数
-        
     def _create_optimizer(self):
         """创建优化器"""
         # 将权重衰减应用于所有参数，除了偏置和LayerNorm参数
@@ -112,14 +108,28 @@ class Trainer:
         logger.info(f"  梯度累积步数: {self.config.gradient_accumulation_steps}")
         logger.info(f"  总训练步数: {self.config.max_steps}")
         
+        # 检查数据集大小并调整批次大小
+        dataset_size = len(self.train_dataset)
+        if dataset_size < self.config.batch_size:
+            logger.warning(f"数据集大小({dataset_size})小于批次大小({self.config.batch_size})，自动调整批次大小")
+            self.config.batch_size = max(1, dataset_size // 2)
+        
         train_dataloader = DataLoader(
             self.train_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
             pin_memory=True,
-            drop_last=True
+            drop_last=False,  # 不丢弃最后一个不完整的批次
+            num_workers=4,
+            persistent_workers=True  # 保持worker进程存活
         )
         
+        # 检查数据加载器是否正确初始化
+        try:
+            next(iter(train_dataloader))
+        except Exception as e:
+            raise RuntimeError(f"数据加载器初始化失败：{str(e)}")
+            
         # 训练循环
         self.model.train()
         accumulated_loss = 0
@@ -133,35 +143,14 @@ class Trainer:
                 epoch_iterator = train_dataloader
             
             for step, batch in enumerate(epoch_iterator):
-                try:
-                    # 将数据移动到设备
-                    input_ids = batch["input_ids"].to(self.device)
-                    labels = batch["labels"].to(self.device)
-                    
-                    # 前向传播和损失计算
-                    with torch.cuda.amp.autocast(enabled=self.config.fp16):
-                        outputs, loss = self.model(input_ids, targets=labels)
-                        loss = loss / self.config.gradient_accumulation_steps
-                    
-                    # 重置错误计数器
-                    self.data_loading_errors = 0
-                except Exception as e:
-                    logger.error(f"训练步骤出错: {e}")
-                    self.data_loading_errors += 1
-                    
-                    # 如果连续错误次数过多，重新初始化数据加载器
-                    if self.data_loading_errors >= self.max_data_loading_errors:
-                        logger.warning("检测到多次连续错误，重新初始化数据加载器")
-                        train_dataloader = DataLoader(
-                            self.train_dataset,
-                            batch_size=self.config.batch_size,
-                            shuffle=True,
-                            pin_memory=True,
-                            drop_last=True
-                        )
-                        epoch_iterator = tqdm(train_dataloader, desc=f"Epoch {self.epoch}")
-                        self.data_loading_errors = 0
-                    continue
+                # 将数据移动到设备
+                input_ids = batch["input_ids"].to(self.device)
+                labels = batch["labels"].to(self.device)
+                
+                # 前向传播和损失计算
+                with torch.cuda.amp.autocast(enabled=self.config.fp16):
+                    outputs, loss = self.model(input_ids, targets=labels)
+                    loss = loss / self.config.gradient_accumulation_steps
                 
                 # 反向传播
                 if self.config.fp16:

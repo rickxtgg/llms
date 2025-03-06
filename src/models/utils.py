@@ -48,14 +48,13 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
     num_blocks = (seq_len + block_size - 1) // block_size
     
     # 使用torch.jit.script优化计算密集型操作
-    @torch.jit.script
-    def compute_attention(block_q, block_k, block_v, block_mask=None):
+    def compute_attention(block_q, block_k, block_v, block_mask=None, p: float = 0.0):
         block_attn = torch.matmul(block_q, block_k.transpose(-1, -2))
         if block_mask is not None:
             block_attn = block_attn.masked_fill(block_mask == 0, float('-inf'))
         block_attn = F.softmax(block_attn, dim=-1)
-        if dropout_p > 0.0:
-            block_attn = F.dropout(block_attn, p=dropout_p)
+        if p > 0.0:
+            block_attn = F.dropout(block_attn, p=p)
         return torch.matmul(block_attn, block_v)
     
     # 使用异步预取优化内存访问
@@ -85,7 +84,7 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
             block_mask = mask[:, :, start_idx:end_idx, :]
         
         # 计算块注意力
-        block_output = compute_attention(block_q, block_k, block_v, block_mask)
+        block_output = compute_attention(block_q, block_k, block_v, block_mask, dropout_p)
         
         # 更新输出
         attn_output[:, :, start_idx:end_idx] = block_output
