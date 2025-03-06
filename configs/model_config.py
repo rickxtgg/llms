@@ -32,8 +32,8 @@ class ModelConfig:
         # 训练设置
         self.max_steps = 100000
         self.warmup_steps = 10000
-        self.batch_size = 32
-        self.gradient_accumulation_steps = 1
+        self.batch_size = 8  # 减小batch size以降低内存使用
+        self.gradient_accumulation_steps = 4  # 增加梯度累积步数
         self.fp16 = True  # 混合精度训练
         
         # 数据参数
@@ -45,11 +45,11 @@ class ModelConfig:
         # 内存优化（基于EPLB项目）
         self.memory_optimization = {
             "gradient_checkpointing": True,  # 梯度检查点，减少内存使用
-            "activation_recomputation": False,  # 激活重计算
-            "zero_optimization": False,  # ZeRO优化
-            "zero_stage": 1,  # ZeRO优化阶段 (1, 2, 或 3)
-            "offload_optimizer": False,  # 优化器状态卸载到CPU
-            "offload_param": False  # 参数卸载到CPU
+            "activation_recomputation": True,  # 启用激活重计算
+            "zero_optimization": True,  # 启用ZeRO优化
+            "zero_stage": 2,  # 使用ZeRO-2优化
+            "offload_optimizer": True,  # 启用优化器状态卸载到CPU
+            "offload_param": False  # 参数保持在GPU中
         }
         
         # 分布式训练（基于DualPipe项目）

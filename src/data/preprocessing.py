@@ -54,13 +54,22 @@ class TextDataset(Dataset):
         # 使用分词器处理文本
         tokenized_text = self.tokenizer.encode(text)
         
-        # 将文本分割成固定大小的块
-        for i in range(0, len(tokenized_text) - self.block_size, self.block_size):
+        # 如果文本长度小于block_size，直接使用整个文本
+        if len(tokenized_text) <= self.block_size:
             example = {
-                "input_ids": tokenized_text[i:i + self.block_size],
-                "labels": tokenized_text[i:i + self.block_size],
+                "input_ids": tokenized_text + [self.tokenizer.token_to_id["<pad>"]] * (self.block_size - len(tokenized_text)),
+                "labels": tokenized_text + [self.tokenizer.token_to_id["<pad>"]] * (self.block_size - len(tokenized_text)),
             }
             self.examples.append(example)
+        else:
+            # 将文本分割成固定大小的块，使用较小的步长以增加样本数量
+            stride = self.block_size // 2  # 使用block_size的一半作为步长
+            for i in range(0, len(tokenized_text) - self.block_size, stride):
+                example = {
+                    "input_ids": tokenized_text[i:i + self.block_size],
+                    "labels": tokenized_text[i:i + self.block_size],
+                }
+                self.examples.append(example)
     
     def __len__(self):
         return len(self.examples)
