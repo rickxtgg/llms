@@ -126,7 +126,11 @@ class Trainer:
         
         while self.global_step < self.config.max_steps:
             self.epoch += 1
+<<<<<<< HEAD
             if self.epoch % 10000 == 0:
+=======
+            if self.epoch % 5000 == 0:
+>>>>>>> 5dde767324ee2f7c40320c6195d3bd1f2c9fcf11
                 logger.info(f"开始 Epoch {self.epoch}")
                 epoch_iterator = tqdm(train_dataloader, desc=f"Epoch {self.epoch}")
             else:
