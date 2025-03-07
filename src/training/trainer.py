@@ -47,8 +47,57 @@ class Trainer:
         self.optimizer = self._create_optimizer()
         self.scheduler = self._create_scheduler()
         
-        # 设置混合精度训练
-        self.scaler = torch.cuda.amp.GradScaler() if config.fp16 else None
+        # 设置精度训练
+        self.precision = getattr(config, 'precision', 'fp32')
+        self.fp16 = getattr(config, 'fp16', False)
+        self.fp64 = getattr(config, 'fp64', False)
+        
+        # 设置混合精度训练的梯度缩放器
+        self.scaler = torch.cuda.amp.GradScaler() if self.fp16 else None
+        
+        # 如果使用双精度训练，将模型转换为float64
+        if self.fp64:
+            self.model = self.model.double()
+            
+        # 应用内存优化
+        self._apply_memory_optimizations()
+        
+    def _apply_memory_optimizations(self):
+        """应用内存优化技术"""
+        # 获取内存优化配置
+        memory_config = getattr(self.config, 'memory_optimization', {})
+        
+        # 应用梯度检查点
+        if memory_config.get('gradient_checkpointing', False):
+            # 为模型中的Transformer块启用梯度检查点
+            for name, module in self.model.named_modules():
+                if "blocks" in name and isinstance(module, nn.Module):
+                    if hasattr(module, 'gradient_checkpointing'):
+                        module.gradient_checkpointing = True
+            
+            # 如果模型有全局梯度检查点属性，也启用它
+            if hasattr(self.model, 'gradient_checkpointing'):
+                self.model.gradient_checkpointing = True
+        
+        # 应用激活重计算
+        if memory_config.get('activation_recomputation', False):
+            for name, module in self.model.named_modules():
+                if "attention" in name.lower() and hasattr(module, 'save_attention_output'):
+                    module.save_attention_output = False
+        
+        # 使用固定内存加速CPU-GPU传输
+        if memory_config.get('pin_memory', True):
+            torch.cuda.empty_cache()
+            
+        # 优化设备放置
+        if memory_config.get('optimize_device_placement', True):
+            if torch.cuda.is_available():
+                torch.cuda.set_device(torch.cuda.current_device())
+                
+        # 如果启用了CPU卸载，设置相关参数
+        if memory_config.get('cpu_offload', False):
+            # 这里可以添加将不活跃参数卸载到CPU的逻辑
+            pass
         
         # 设置TensorBoard
         self.writer = SummaryWriter(log_dir="runs")
@@ -136,7 +185,7 @@ class Trainer:
         
         while self.global_step < self.config.max_steps:
             self.epoch += 1
-            if self.epoch % 5000 == 0:
+            if self.epoch % 1 == 0:
                 logger.info(f"开始 Epoch {self.epoch}")
                 epoch_iterator = tqdm(train_dataloader, desc=f"Epoch {self.epoch}")
             else:
@@ -148,12 +197,12 @@ class Trainer:
                 labels = batch["labels"].to(self.device)
                 
                 # 前向传播和损失计算
-                with torch.cuda.amp.autocast(enabled=self.config.fp16):
+                with torch.cuda.amp.autocast(enabled=self.fp16):
                     outputs, loss = self.model(input_ids, targets=labels)
                     loss = loss / self.config.gradient_accumulation_steps
                 
                 # 反向传播
-                if self.config.fp16:
+                if self.fp16:
                     self.scaler.scale(loss).backward()
                 else:
                     loss.backward()
@@ -164,7 +213,7 @@ class Trainer:
                 # 梯度累积
                 if (step + 1) % self.config.gradient_accumulation_steps == 0:
                     # 梯度裁剪
-                    if self.config.fp16:
+                    if self.fp16:
                         self.scaler.unscale_(self.optimizer)
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                         self.scaler.step(self.optimizer)

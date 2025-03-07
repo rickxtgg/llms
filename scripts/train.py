@@ -79,6 +79,18 @@ def parse_args():
         default=42, 
         help="随机种子"
     )
+    parser.add_argument(
+        "--precision", 
+        type=str, 
+        choices=["fp16", "fp32", "fp64", "bf16"], 
+        default=None, 
+        help="训练精度类型: fp16(混合精度), fp32(单精度), fp64(双精度), bf16(bfloat16)"
+    )
+    parser.add_argument(
+        "--memory_efficient", 
+        action="store_true", 
+        help="启用内存高效训练（梯度检查点、激活重计算等）"
+    )
     
     return parser.parse_args()
 
@@ -95,12 +107,20 @@ def load_config(config_path, config_name):
     try:
         config_module = import_module(config_path)
         
-        # 处理函数调用，如 'get_small_config()'
+        # 处理函数调用，如 'get_small_config()' 或 'get_small_config'
         if '()' in config_name:
+            # 如果名称中包含括号，移除括号并调用函数
             config_func = getattr(config_module, config_name.replace('()', ''))
             config = config_func()
         else:
-            config = getattr(config_module, config_name)
+            # 检查获取的属性是否为可调用函数
+            attr = getattr(config_module, config_name)
+            if callable(attr):
+                # 如果是函数，调用它
+                config = attr()
+            else:
+                # 如果不是函数，直接使用该属性
+                config = attr
             
         return config
     except (ImportError, AttributeError) as e:
@@ -125,6 +145,24 @@ def main():
         config.train_file = args.train_file
     if args.val_file:
         config.val_file = args.val_file
+        
+    # 更新精度设置（如果在命令行中提供）
+    if args.precision:
+        config.precision = args.precision
+        # 根据精度类型设置相应的标志
+        config.fp16 = (args.precision == "fp16")
+        config.fp64 = (args.precision == "fp64")
+        
+    # 更新内存优化设置（如果启用）
+    if args.memory_efficient:
+        if not hasattr(config, 'memory_optimization'):
+            config.memory_optimization = {}
+        config.memory_optimization["gradient_checkpointing"] = True
+        config.memory_optimization["activation_recomputation"] = True
+        config.memory_optimization["memory_efficient_attention"] = True
+        config.memory_optimization["recompute_activation"] = True
+        config.memory_optimization["pin_memory"] = True
+        config.memory_optimization["optimize_device_placement"] = True
     
     # 获取分词器
     tokenizer = get_tokenizer(args.tokenizer_path)

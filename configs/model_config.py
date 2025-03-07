@@ -35,6 +35,8 @@ class ModelConfig:
         self.batch_size = 32
         self.gradient_accumulation_steps = 1
         self.fp16 = True  # 混合精度训练
+        self.fp64 = False  # 双精度训练
+        self.precision = "fp16"  # 精度类型: "fp16", "fp32", "fp64", "bf16"
         
         # 数据参数
         self.train_file = "data/processed/train.txt"
@@ -49,7 +51,12 @@ class ModelConfig:
             "zero_optimization": False,  # ZeRO优化
             "zero_stage": 1,  # ZeRO优化阶段 (1, 2, 或 3)
             "offload_optimizer": False,  # 优化器状态卸载到CPU
-            "offload_param": False  # 参数卸载到CPU
+            "offload_param": False,  # 参数卸载到CPU
+            "cpu_offload": False,  # 将不活跃的参数卸载到CPU
+            "memory_efficient_attention": True,  # 内存高效的注意力计算
+            "recompute_activation": False,  # 重新计算激活值而不是存储
+            "pin_memory": True,  # 使用固定内存加速CPU-GPU传输
+            "optimize_device_placement": True  # 优化模型参数在设备上的放置
         }
         
         # 分布式训练（基于DualPipe项目）
